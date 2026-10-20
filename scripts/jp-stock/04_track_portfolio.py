@@ -239,6 +239,8 @@ def main() -> int:
     # 騰落率の中央値を「等加重の市場リターン」として使う。
     # 中央値にしているのは、値がさ株や少数の急騰銘柄に引っ張られないため。
     bench_line = ""
+    bench_pct = None      # 市場リターン(%)。history.csv に記録して後段の解析で使う
+    bench_breadth = None  # 上昇銘柄比率(%)
     if asof != "-" and asof != entry_date:
         snaps = {}
         for d in (entry_date, asof):
@@ -254,6 +256,7 @@ def main() -> int:
             common.sort()
             med = common[len(common) // 2]
             up = 100 * sum(1 for x in common if x > 0) / len(common)
+            bench_pct, bench_breadth = round(med, 2), round(up, 1)
             bench_line = (f"市場全体（{len(common):,}銘柄の等加重中央値）**{med:+.2f}%**"
                           f"　上昇銘柄比率 {up:.0f}%")
     pl = total_value - total_cost
@@ -264,6 +267,8 @@ def main() -> int:
 
     # --- history.csv に追記（同じ asof は上書き） ---
     hist_path = PF_DIR / "history.csv"
+    COLS = ["asof", "total_cost", "total_value", "pl_yen", "pl_pct",
+            "market_pct", "market_breadth", "updated_at"]
     hist = []
     if hist_path.exists():
         with hist_path.open(encoding="utf-8-sig") as f:
@@ -271,12 +276,15 @@ def main() -> int:
     hist.append({"asof": asof, "total_cost": round(total_cost),
                  "total_value": round(total_value), "pl_yen": round(pl),
                  "pl_pct": round(pl_pct, 2),
+                 "market_pct": "" if bench_pct is None else bench_pct,
+                 "market_breadth": "" if bench_breadth is None else bench_breadth,
                  "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
     hist.sort(key=lambda r: r["asof"])
     with hist_path.open("w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=list(hist[0]))
+        w = csv.DictWriter(f, fieldnames=COLS, extrasaction="ignore")
         w.writeheader()
-        w.writerows(hist)
+        for r in hist:
+            w.writerow({c: r.get(c, "") for c in COLS})
 
     # --- レポート ---
     md = [f"# 仮想ポートフォリオ {asof} 時点", "",
